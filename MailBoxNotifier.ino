@@ -16,6 +16,8 @@ String SSID_LIST;
 DNSServer DNS_SERVER;
 ESP8266WebServer WEB_SERVER(80);
 
+#define CHUNKS
+
 /////////////////////////
 // Device Definitions //
 /////////////////////////
@@ -40,6 +42,32 @@ int BUTTON_COUNTER = 0;
 //////////////////////
 // SETTINGS Size    //
 //////////////////////
+
+
+//////////////////////
+// SETTINGS         //
+//////////////////////
+//#define STRUCT
+#ifdef STRUCT
+
+struct settings
+{
+  String ssid = "";
+  String password = "";
+  
+  String smtp_server = "";
+  String smtp_port = "";
+  String smtp_user = "";
+  String smtp_password = "";
+  
+  String from = "";
+  String to = "";
+  String subject = "";
+  String body = "";
+};
+
+settings Settings;
+#else
 int SSID_SIZE = 32;
 int PASSWORD_SIZE = 64;
 
@@ -58,9 +86,6 @@ int SMTP_SETTINGS_SIZE = SMTP_SERVER_SIZE + SMTP_PORT_SIZE + SMTP_USER_SIZE + SM
 int EMAIL_SETTINGS_SIZE = FROM_SIZE + TO_SIZE + SUBJECT_SIZE + BODY_SIZE;;
 int SETTINGS_SIZE = AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + EMAIL_SETTINGS_SIZE;
 
-//////////////////////
-// SETTINGS         //
-//////////////////////
 String ssid = "";
 String password = "";
   
@@ -73,8 +98,7 @@ String from = "";
 String to = "";
 String subject = "";
 String body = "";
-
-
+#endif
 
   
 void setup() {
@@ -147,8 +171,13 @@ void triggerButtonEvent()
   const int httpPort = 80;
 
   // Make sure we can connect
+#ifdef STRUCT
+   Serial.println("Connecting to "+Settings.smtp_server+" port "+Settings.smtp_port);
+   if (!client.connect(Settings.smtp_server.c_str(), atoi( Settings.smtp_port.c_str() ))) {
+#else
    Serial.println("Connecting to "+smtp_server+" port "+smtp_port);
-  if (!client.connect(smtp_server.c_str(), atoi( smtp_port.c_str() ))) {
+   if (!client.connect(smtp_server.c_str(), atoi( smtp_port.c_str() ))) {
+#endif   
     Serial.println("Can't connect!");
     return;
   }
@@ -167,11 +196,21 @@ void triggerButtonEvent()
 
   Serial.println("Sending User");
   char* base64user;
+#ifdef STRUCT
+  base64user=(char*) malloc(Base64encode_len((int)Settings.smtp_user.length())+1);
+  const size_t smtp_user_size = (Settings.smtp_user.length() + 1);
+  char *smtp_user_chars = new char[smtp_user_size];
+  strcpy(smtp_user_chars, Settings.smtp_user.c_str());
+  Base64encode(base64user, smtp_user_chars,Settings.smtp_user.length());
+#else
   base64user=(char*) malloc(Base64encode_len((int)smtp_user.length())+1);
   const size_t smtp_user_size = (smtp_user.length() + 1);
   char *smtp_user_chars = new char[smtp_user_size];
   strcpy(smtp_user_chars, smtp_user.c_str());
   Base64encode(base64user, smtp_user_chars,smtp_user.length());
+#endif   
+  
+  
   Serial.println(base64user);
   client.println(base64user);
   //free (base64user);
@@ -180,11 +219,22 @@ void triggerButtonEvent()
 
   Serial.println("Sending Password");
   char* base64pass;
+#ifdef STRUCT
+  base64pass=(char*) malloc(Base64encode_len((int)Settings.smtp_password.length())+1);
+  const size_t smtp_password_size = (Settings.smtp_password.length() + 1);
+  char *smtp_password_chars = new char[smtp_password_size];
+  strcpy(smtp_password_chars, Settings.smtp_password.c_str());
+  Base64encode(base64pass, smtp_password_chars,Settings.smtp_password.length());
+#else
   base64pass=(char*) malloc(Base64encode_len((int)smtp_password.length())+1);
   const size_t smtp_password_size = (smtp_password.length() + 1);
   char *smtp_password_chars = new char[smtp_password_size];
   strcpy(smtp_password_chars, smtp_password.c_str());
   Base64encode(base64pass, smtp_password_chars,smtp_password.length());
+#endif   
+  
+
+  
   Serial.println(base64pass);
   client.println(base64pass);
   //free(base64pass);
@@ -193,12 +243,22 @@ void triggerButtonEvent()
 
 // change to your email address (sender)
   Serial.println(F("Sending From"));
+#ifdef STRUCT
+  client.println("MAIL From: "+Settings.from);
+#else
   client.println("MAIL From: "+from);
+#endif   
+
   if(!Receive(client)) {Serial.println("from");return;}
 
 // change to recipient address
   Serial.println("Sending To");
+#ifdef STRUCT
+  client.println("RCPT To: "+Settings.to);
+#else
   client.println("RCPT To: "+to);
+#endif   
+
   if(!Receive(client)) {Serial.println("tomail");return;}
 
   Serial.println("Sending DATA");
@@ -207,15 +267,21 @@ void triggerButtonEvent()
 
   Serial.println("Sending email");
 
-// change to recipient address
+
+
+#ifdef STRUCT
+  client.println("To: "+Settings.to);
+  client.println("From: "+Settings.from);
+  client.println("Subject: "+Settings.subject+"\r\n");
+  client.println(Settings.body);
+#else
   client.println("To: "+to);
-
-// change to your address
   client.println("From: "+from);
-
   client.println("Subject: "+subject+"\r\n");
-
   client.println(body);
+#endif 
+
+
 
   client.println(".");
 
@@ -312,9 +378,82 @@ boolean debounce() {
 // AP Setup Mode Functions //
 /////////////////////////////
 
+
+// Saving Configuration to EEPROM
+void saveConfig(){
+  Serial.println("Saving Config....");
+#ifdef STRUCT
+  showSettings();
+  EEPROM.put(0, Settings);
+#else
+
+
+  
+      for (int i = 0; i < SETTINGS_SIZE; ++i) {
+        EEPROM.write(i, 0);
+      }
+      int i;
+
+  
+      Serial.println("Writing SSID to EEPROM... ->"+ssid+"<-");
+      for (i = 0; i < ssid.length(); ++i) {
+        Serial.print(ssid[i]);
+        EEPROM.write(i, ssid[i]);
+      }EEPROM.write(i, '\0');
+      Serial.println("Writing Password to EEPROM... ->" + password+"<-");
+      for (i = 0; i < password.length(); ++i) {
+        Serial.print(password[i]);
+        EEPROM.write(SSID_SIZE + i, password[i]);
+      }EEPROM.write(SSID_SIZE + i, '\0');
+
+      Serial.println("Writing SMTP Server to EEPROM... ->"+smtp_server+"<-");
+      for (i = 0; i < smtp_server.length(); ++i) {
+        EEPROM.write(AP_SETTINGS_SIZE + i, smtp_server[i]);
+      }EEPROM.write(AP_SETTINGS_SIZE + i, '\0');
+      Serial.println("Writing SMTP Port to EEPROM... ->"+smtp_port+"<-");
+      for (i = 0; i < smtp_port.length(); ++i) {
+        EEPROM.write(AP_SETTINGS_SIZE + SMTP_SERVER_SIZE + i, smtp_port[i]);
+      }EEPROM.write(AP_SETTINGS_SIZE + SMTP_SERVER_SIZE + i, '\0');
+      Serial.println("Writing Username to EEPROM... ->"+smtp_user+"<-");
+      for (i = 0; i < smtp_user.length(); ++i) {
+        EEPROM.write(AP_SETTINGS_SIZE + SMTP_SERVER_SIZE + SMTP_PORT_SIZE + i, smtp_user[i]);
+      }EEPROM.write(AP_SETTINGS_SIZE + SMTP_SERVER_SIZE + SMTP_PORT_SIZE + i, '\0');
+      Serial.println("Writing Password to EEPROM... ->"+smtp_password+"<-");
+      for (i = 0; i < smtp_password.length(); ++i) {
+        EEPROM.write(AP_SETTINGS_SIZE + SMTP_SERVER_SIZE + SMTP_PORT_SIZE + SMTP_USER_SIZE + i, smtp_password[i]);
+      }EEPROM.write(AP_SETTINGS_SIZE + SMTP_SERVER_SIZE + SMTP_PORT_SIZE + SMTP_USER_SIZE + i, '\0');
+     
+      Serial.println("Writing From to EEPROM... ->"+from+"<-");
+      for (i = 0; i < from.length(); ++i) {
+        EEPROM.write(AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + i, from[i]);
+      }EEPROM.write(AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE +i, '\0');
+      Serial.println("Writing To to EEPROM... ->"+to+"<-");
+      for (i = 0; i < to.length(); ++i) {
+        EEPROM.write(AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + FROM_SIZE + i, to[i]);
+      }EEPROM.write(AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + FROM_SIZE + i, '\0');
+      Serial.println("Writing Subject to EEPROM... ->"+subject+"<-");
+      for (i = 0; i < subject.length(); ++i) {
+        EEPROM.write(AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + FROM_SIZE + TO_SIZE + i, subject[i]);
+      }EEPROM.write(AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + FROM_SIZE + TO_SIZE +i, '\0');
+      Serial.println("Writing Body to EEPROM... ->"+body+"<-");
+      for (i = 0; i < body.length(); ++i) {
+        EEPROM.write(AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + FROM_SIZE + TO_SIZE + SUBJECT_SIZE + i, body[i]);
+      }EEPROM.write(AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + FROM_SIZE + TO_SIZE + SUBJECT_SIZE  + i, '\0');
+#endif      
+      EEPROM.commit();
+}
+
+
 // Load Saved Configuration from EEPROM
 boolean loadSavedConfig() {
   Serial.println("Reading Saved Config....");
+  saveConfig();
+showSettings(); 
+  
+#ifdef STRUCT 
+  
+  EEPROM.get(0, Settings);
+#else
   String loaded_ssid = "";
   String loaded_password = "";
     
@@ -328,12 +467,15 @@ boolean loadSavedConfig() {
   String loaded_subject = "";
   String loaded_body = "";
 
- 
+ /*
   if (EEPROM.read(0) != 0) {
 
     //AP Settings
     for (int i = 0; i < SSID_SIZE; ++i) {
-      //loaded_ssid += char(EEPROM.read(i));
+      Serial.print(char(EEPROM.read(i)));
+      if(char(EEPROM.read(i))=='\0') break;
+      loaded_ssid += char(EEPROM.read(i));
+      
     }
     if(loaded_ssid!=""){
       ssid=String(loaded_ssid);
@@ -341,10 +483,13 @@ boolean loadSavedConfig() {
     }else{
       Serial.print("Using default SSID: ");
     }
-    Serial.println(ssid);
+    Serial.println("->"+ssid+"<-");
     
     for (int i = 0; i < PASSWORD_SIZE; ++i) {
-      //loaded_password += char(EEPROM.read(SSID_SIZE + i));
+      Serial.print(char(EEPROM.read(SSID_SIZE + i)));
+      if(char(EEPROM.read(SSID_SIZE + i))=='\0') break;
+      loaded_password += char(EEPROM.read(SSID_SIZE + i));
+      
     }
     if(loaded_password!=""){
       password=String(loaded_password);
@@ -352,11 +497,14 @@ boolean loadSavedConfig() {
     }else{
       Serial.print("Using default Password: ");
     }
-    Serial.println(password);
+    Serial.println("->"+password+"<-");
     
     //SMTP Settings
     for (int i = 0; i < SMTP_SERVER_SIZE; ++i) {
+      Serial.print(char(EEPROM.read(AP_SETTINGS_SIZE + i)));
+      if(char(EEPROM.read(AP_SETTINGS_SIZE + i))=='\0') break;
       loaded_smtp_server += char(EEPROM.read(AP_SETTINGS_SIZE + i));
+      
     }
     if(loaded_smtp_server!=""){
       smtp_server=String(loaded_smtp_server);    
@@ -364,10 +512,13 @@ boolean loadSavedConfig() {
     }else{
       Serial.print("Using default SMTP Server: ");
     }
-    Serial.println(smtp_server);
+    Serial.println("->"+smtp_server+"<-");
           
     for (int i = 0; i < SMTP_PORT_SIZE; ++i) {
+      Serial.print(char(EEPROM.read(AP_SETTINGS_SIZE + SMTP_SERVER_SIZE + i)));
+      if(char(EEPROM.read(AP_SETTINGS_SIZE + SMTP_SERVER_SIZE +  i))=='\0') break;
       loaded_smtp_port += char(EEPROM.read(AP_SETTINGS_SIZE + SMTP_SERVER_SIZE + i));
+      
     }
     if(loaded_smtp_port!=""){
       smtp_port=String(loaded_smtp_port);    
@@ -375,10 +526,13 @@ boolean loadSavedConfig() {
     }else{
       Serial.print("Using default SMTP Port: ");
     }
-    Serial.println(smtp_port);
+    Serial.println("->"+smtp_port+"<-");
           
     for (int i = 0; i < SMTP_USER_SIZE; ++i) {
+      Serial.print(char(EEPROM.read(AP_SETTINGS_SIZE + SMTP_SERVER_SIZE + SMTP_PORT_SIZE + i)));
+      if(char(EEPROM.read(AP_SETTINGS_SIZE + SMTP_SERVER_SIZE + SMTP_PORT_SIZE +  i))=='\0') break;
       loaded_smtp_user += char(EEPROM.read(AP_SETTINGS_SIZE + SMTP_SERVER_SIZE + SMTP_PORT_SIZE + i));
+      
     }
     if(loaded_smtp_user!=""){
       smtp_user=String(loaded_smtp_user);    
@@ -386,10 +540,13 @@ boolean loadSavedConfig() {
     }else{
       Serial.print("Using default SMTP User: ");
     }
-    Serial.println(smtp_user);
+    Serial.println("->"+smtp_user+"<-");
     
     for (int i = 0; i < SMTP_PASSWORD_SIZE; ++i) {
+      Serial.print(char(EEPROM.read(AP_SETTINGS_SIZE + SMTP_SERVER_SIZE + SMTP_PORT_SIZE + SMTP_USER_SIZE + i)));
+      if(char(EEPROM.read(AP_SETTINGS_SIZE + SMTP_SERVER_SIZE + SMTP_PORT_SIZE + SMTP_USER_SIZE + i))=='\0') break;
       loaded_smtp_password += char(EEPROM.read(AP_SETTINGS_SIZE + SMTP_SERVER_SIZE + SMTP_PORT_SIZE + SMTP_USER_SIZE + i));
+      
     }
     if(loaded_smtp_password!=""){
       smtp_password=String(loaded_smtp_password);    
@@ -397,13 +554,16 @@ boolean loadSavedConfig() {
     }else{
       Serial.print("Using default SMTP Password: ");
     }
-    Serial.println(smtp_password);
+    Serial.println("->"+smtp_password+"<-");
     
 
 
     //Email Settings
     for (int i = 0; i < FROM_SIZE; ++i) {
+      Serial.print(char(EEPROM.read(AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + i)));
+      if(char(EEPROM.read(AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + i))=='\0') break;
       loaded_from += char(EEPROM.read(AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + i));
+      
     }
     if(loaded_from!=""){
       from=String(loaded_from);    
@@ -411,10 +571,13 @@ boolean loadSavedConfig() {
     }else{
       Serial.print("Using default From: ");
     }
-    Serial.println(from);
+    Serial.println("->"+from+"<-");
     
     for (int i = 0; i < TO_SIZE; ++i) {
+       Serial.print(char(EEPROM.read(AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + FROM_SIZE + i)));
+       if(char(EEPROM.read(AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + FROM_SIZE + i))=='\0') break;
       loaded_to += char(EEPROM.read(AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + FROM_SIZE + i));
+      
     }
     if(loaded_to!=""){
       to=String(loaded_to);    
@@ -422,10 +585,13 @@ boolean loadSavedConfig() {
     }else{
       Serial.print("Using default To: ");
     }
-    Serial.println(to);
+    Serial.println("->"+to+"<-");
     
     for (int i = 0; i < SUBJECT_SIZE; ++i) {
+       Serial.print(char(EEPROM.read(AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + FROM_SIZE + TO_SIZE + i)));
+       if(char(EEPROM.read(AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + FROM_SIZE + TO_SIZE + i))=='\0') break;
       loaded_subject += char(EEPROM.read(AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + FROM_SIZE + TO_SIZE + i));
+      
     }
     if(loaded_subject!=""){
       subject=String(loaded_subject);    
@@ -433,10 +599,13 @@ boolean loadSavedConfig() {
     }else{
       Serial.print("Using default Subject: ");
     }
-    Serial.println(subject);
+    Serial.println("->"+subject+"<-");
     
     for (int i = 0; i < BODY_SIZE; ++i) {
+       Serial.print(char(EEPROM.read(AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + FROM_SIZE + TO_SIZE + SUBJECT_SIZE + i)));
+       if(char(EEPROM.read(AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + FROM_SIZE + TO_SIZE + SUBJECT_SIZE + i))=='\0') break;
       loaded_body += char(EEPROM.read(AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + FROM_SIZE + TO_SIZE + SUBJECT_SIZE + i));
+      
     }
     if(loaded_body!=""){
       body=String(loaded_body);    
@@ -444,15 +613,22 @@ boolean loadSavedConfig() {
     }else{
       Serial.print("Using default Body: ");
     }
-    Serial.println(body);
-    
-    WiFi.begin(ssid.c_str(), password.c_str());
+    Serial.println("->"+body+"<-");
+     
     return true;
   }
   else {
     Serial.println("Saved Configuration not found.");
     return false;
   }
+  */
+#endif 
+
+#ifdef STRUCT  
+    WiFi.begin(Settings.ssid.c_str(), Settings.password.c_str());
+#else    
+    WiFi.begin(ssid.c_str(), password.c_str());
+#endif 
 }
 
 // Boolean function to check for a WiFi Connection
@@ -472,6 +648,52 @@ boolean checkWiFiConnection() {
   Serial.println("Timed out.");
   return false;
 }
+void showSettings(){
+ #ifdef STRUCT
+  Serial.print("SSID: ");
+  Serial.println(Settings.ssid);
+  Serial.print("Password: ");
+  Serial.println(Settings.password);
+  Serial.print("SMTP Server: ");
+  Serial.println(Settings.smtp_server);
+  Serial.print("SMTP Port: ");
+  Serial.println(Settings.smtp_port);
+  Serial.print("Username: ");
+  Serial.println(Settings.smtp_user);
+  Serial.print("Password: ");
+  Serial.println(Settings.smtp_password);
+  Serial.print("From: ");
+  Serial.println(Settings.from);
+  Serial.print("To: ");
+  Serial.println(Settings.to);
+  Serial.print("Subject: ");
+  Serial.println(Settings.subject);
+  Serial.print("Body: ");
+  Serial.println(Settings.body);
+ #else
+  Serial.print("SSID: ");
+  Serial.println(ssid);
+  Serial.print("Password: ");
+  Serial.println(password);
+  Serial.print("SMTP Server: ");
+  Serial.println(smtp_server);
+  Serial.print("SMTP Port: ");
+  Serial.println(smtp_port);
+  Serial.print("Username: ");
+  Serial.println(smtp_user);
+  Serial.print("Password: ");
+  Serial.println(smtp_password);
+  Serial.print("From: ");
+  Serial.println(from);
+  Serial.print("To: ");
+  Serial.println(to);
+  Serial.print("Subject: ");
+  Serial.println(subject);
+  Serial.print("Body: ");
+  Serial.println(body);
+ #endif
+}
+
 
 // Start the web server and build out pages
 void startWebServer() {
@@ -486,7 +708,18 @@ void startWebServer() {
       s += SSID_LIST;
       s += "</select><br><br>";
       s += "<label for=\"pass\">Password: </label><input id=\"pass\" name=\"pass\" length=" + String(PASSWORD_SIZE) + " type=\"password\"><br><br>";
+#ifdef STRUCT
+      s += "<label for=\"smtp_server\">SMTP Server: </label><input id=\"smtp_server\" name=\"smtp_server\" length=" + String(SMTP_SERVER_SIZE) + " value=\"" + Settings.smtp_server + "\" type=\"text\"><br><br>";
+      s += "<label for=\"smtp_port\">SMTP Port: </label><input id=\"smtp_port\" name=\"smtp_port\" length=" + String(SMTP_PORT_SIZE) + " value=\"" + Settings.smtp_port + "\" type=\"text\"><br><br>";
+      s += "<label for=\"smtp_user\">User: </label><input id=\"smtp_user\" name=\"smtp_user\" length=" + String(SMTP_USER_SIZE) + " value=\"" + Settings.smtp_user + "\" type=\"text\"><br><br>";
+      s += "<label for=\"smtp_password\">Pass: </label><input id=\"smtp_password\" name=\"smtp_password\" length=" + String(SMTP_PASSWORD_SIZE) + " value=\"" + Settings.smtp_password + "\" type=\"password\"><br><br>";
+     
+      s += "<label for=\"from\">From: </label><input id=\"from\" name=\"from\" length=" + String(FROM_SIZE) + " value=\"" + Settings.from + "\" type=\"text\"><br><br>";
+      s += "<label for=\"to\">To: </label><input id=\"to\" name=\"to\" length=" + String(TO_SIZE) + " value=\"" + Settings.to + "\" type=\"text\"><br><br>";
+      s += "<label for=\"subject\">Subject: </label><input id=\"subject\" name=\"subject\" length=" + String(SUBJECT_SIZE) + " value=\"" + Settings.subject + "\" type=\"text\"><br><br>";
+      s += "<label for=\"body\">Body: </label><textarea id=\"body\" name=\"body\">" + Settings.body + "</textarea><br><br>";
       
+#else
       s += "<label for=\"smtp_server\">SMTP Server: </label><input id=\"smtp_server\" name=\"smtp_server\" length=" + String(SMTP_SERVER_SIZE) + " value=\"" + smtp_server + "\" type=\"text\"><br><br>";
       s += "<label for=\"smtp_port\">SMTP Port: </label><input id=\"smtp_port\" name=\"smtp_port\" length=" + String(SMTP_PORT_SIZE) + " value=\"" + smtp_port + "\" type=\"text\"><br><br>";
       s += "<label for=\"smtp_user\">User: </label><input id=\"smtp_user\" name=\"smtp_user\" length=" + String(SMTP_USER_SIZE) + " value=\"" + smtp_user + "\" type=\"text\"><br><br>";
@@ -497,108 +730,95 @@ void startWebServer() {
       s += "<label for=\"subject\">Subject: </label><input id=\"subject\" name=\"subject\" length=" + String(SUBJECT_SIZE) + " value=\"" + subject + "\" type=\"text\"><br><br>";
       s += "<label for=\"body\">Body: </label><textarea id=\"body\" name=\"body\">" + body + "</textarea><br><br>";
       
+#endif      
+    
       s += "<input type=\"submit\">";
       s +="</form>";
-      Serial.println(s);
-      WEB_SERVER.send(200, "text/html", makePage("Wi-Fi Settings", s));
+      //Serial.println(s);
+      
+#ifdef CHUNKS  
+    WEB_SERVER.send(200, "text/html", "");    
+    String page=makePage("Wi-Fi Settings", s);
+    int chunk_size=1024;
+    for (int j = 0; j < page.length(); j += chunk_size) {
+        if ((j + chunk_size) > page.length()) {
+            chunk_size = page.length()  - j;
+        }
+
+        String my_text = page.substring(j, j + chunk_size);
+        //Serial.println(String(j)+" "+String(chunk_size));
+        //Serial.println(my_text);
+        WEB_SERVER.sendContent(my_text);
+    }
+#else
+  WEB_SERVER.send(200, "text/html", makePage("Wi-Fi Settings", s));
+#endif
+
     });
     // setap Form Post
     WEB_SERVER.on("/setap", []() {
-      for (int i = 0; i < SETTINGS_SIZE; ++i) {
-        EEPROM.write(i, 0);
-      }
-      //AP Settings
-      String ssid = urlDecode(WEB_SERVER.arg("ssid"));
-      Serial.print("SSID: ");
-      Serial.println(ssid);
-      String pass = urlDecode(WEB_SERVER.arg("pass"));
-      Serial.print("Password: ");
-      Serial.println(pass);
 
+
+#ifdef STRUCT  
+      //AP Settings
+      Settings.ssid = urlDecode(WEB_SERVER.arg("ssid"));
+      Settings.password = urlDecode(WEB_SERVER.arg("pass"));
+     
       //SMTP Settings
-      String smtp_server = urlDecode(WEB_SERVER.arg("smtp_server"));
-      Serial.print("SMTP Server: ");
-      Serial.println(smtp_server);
-      String smtp_port = urlDecode(WEB_SERVER.arg("smtp_port"));
-      Serial.print("SMTP Port: ");
-      Serial.println(smtp_port);
-      String smtp_user = urlDecode(WEB_SERVER.arg("smtp_user"));
-      Serial.print("Username: ");
-      Serial.println(smtp_user);
-      String smtp_password = urlDecode(WEB_SERVER.arg("smtp_password"));
-      Serial.print("Password: ");
-      Serial.println(smtp_password);
+      Settings.smtp_server = urlDecode(WEB_SERVER.arg("smtp_server"));
+      Settings.smtp_port = urlDecode(WEB_SERVER.arg("smtp_port"));
+      Settings.smtp_user = urlDecode(WEB_SERVER.arg("smtp_user"));
+      Settings.smtp_password = urlDecode(WEB_SERVER.arg("smtp_password"));
+    
 
       //Email Settings
-      String from = urlDecode(WEB_SERVER.arg("from"));
-      Serial.print("From: ");
-      Serial.println(from);
-      String to = urlDecode(WEB_SERVER.arg("to"));
-      Serial.print("To: ");
-      Serial.println(to);
-      String subject = urlDecode(WEB_SERVER.arg("subject"));
-      Serial.print("Subject: ");
-      Serial.println(subject);
-      String body = urlDecode(WEB_SERVER.arg("body"));
-      Serial.print("Body: ");
-      Serial.println(body);
-      
-      Serial.println("Writing SSID to EEPROM...");
-      for (int i = 0; i < ssid.length(); ++i) {
-        EEPROM.write(i, ssid[i]);
-      }
-      Serial.println("Writing Password to EEPROM...");
-      for (int i = 0; i < pass.length(); ++i) {
-        EEPROM.write(SSID_SIZE + i, pass[i]);
-      }
-
-      Serial.println("Writing SMTP Server to EEPROM...");
-      for (int i = 0; i < smtp_server.length(); ++i) {
-        EEPROM.write(AP_SETTINGS_SIZE + i, smtp_server[i]);
-      }
-      Serial.println("Writing SMTP Port to EEPROM...");
-      for (int i = 0; i < smtp_port.length(); ++i) {
-        EEPROM.write(AP_SETTINGS_SIZE + SMTP_SERVER_SIZE + i, smtp_port[i]);
-      }
-      Serial.println("Writing Username to EEPROM...");
-      for (int i = 0; i < smtp_user.length(); ++i) {
-        EEPROM.write(AP_SETTINGS_SIZE + SMTP_SERVER_SIZE + SMTP_PORT_SIZE + i, smtp_user[i]);
-      }
-      Serial.println("Writing Password to EEPROM...");
-      for (int i = 0; i < smtp_password.length(); ++i) {
-        EEPROM.write(AP_SETTINGS_SIZE + SMTP_SERVER_SIZE + SMTP_PORT_SIZE + SMTP_USER_SIZE + i, smtp_password[i]);
-      }
+      Settings.from = urlDecode(WEB_SERVER.arg("from"));
+      Settings.to = urlDecode(WEB_SERVER.arg("to"));
+      Settings.subject = urlDecode(WEB_SERVER.arg("subject"));
+      Settings.body = urlDecode(WEB_SERVER.arg("body"));
      
-      Serial.println("Writing From to EEPROM...");
-      for (int i = 0; i < from.length(); ++i) {
-        EEPROM.write(AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + i, from[i]);
-      }
-      Serial.println("Writing To to EEPROM...");
-      for (int i = 0; i < to.length(); ++i) {
-        EEPROM.write(AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + FROM_SIZE + i, to[i]);
-      }
-      Serial.println("Writing Subject to EEPROM...");
-      for (int i = 0; i < subject.length(); ++i) {
-        EEPROM.write(AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + FROM_SIZE + TO_SIZE + i, subject[i]);
-      }
-      Serial.println("Writing Body to EEPROM...");
-      for (int i = 0; i < body.length(); ++i) {
-        EEPROM.write(AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + FROM_SIZE + TO_SIZE + SUBJECT_SIZE + i, body[i]);
-      }
+
+
+
+#else    
+     //AP Settings
+      ssid = urlDecode(WEB_SERVER.arg("ssid"));
+      password = urlDecode(WEB_SERVER.arg("pass"));
+     
+      //SMTP Settings
+      smtp_server = urlDecode(WEB_SERVER.arg("smtp_server"));
+      smtp_port = urlDecode(WEB_SERVER.arg("smtp_port"));
+      smtp_user = urlDecode(WEB_SERVER.arg("smtp_user"));
+      smtp_password = urlDecode(WEB_SERVER.arg("smtp_password"));
+    
+
+      //Email Settings
+      from = urlDecode(WEB_SERVER.arg("from"));
+      to = urlDecode(WEB_SERVER.arg("to"));
+      subject = urlDecode(WEB_SERVER.arg("subject"));
+      body = urlDecode(WEB_SERVER.arg("body"));
+#endif 
+     
       
-      EEPROM.commit();
+      showSettings();
+      saveConfig();
+    
       Serial.println("Write EEPROM done!");
       String s = "<h1>WiFi Setup complete.</h1><p>The button will be connected automatically to \"";
+#ifdef STRUCT 
+      s += Settings.ssid;
+#else
       s += ssid;
+#endif
       s += "\" after the restart.";
-      Serial.println(s);
+      //Serial.println(s);
       WEB_SERVER.send(200, "text/html", makePage("Wi-Fi Settings", s));
       ESP.restart();
     });
     // Show the configuration page if no path is specified
     WEB_SERVER.onNotFound([]() {
       String s = "<h1>WiFi Configuration Mode</h1><p><a href=\"/settings\">Wi-Fi Settings</a></p>";
-      Serial.println(s);
+      //Serial.println(s);
       WEB_SERVER.send(200, "text/html", makePage("Access Point mode", s));
     });
   }
@@ -612,7 +832,21 @@ void startWebServer() {
       s += "<h3>Network Details</h3>";
       s += "<p>Connected to: " + String(WiFi.SSID()) + "</p>";
       s += "<p>IP Address: " + ipStr + "</p>";
+
+
+#ifdef STRUCT 
+      s += "<h3>SMTP Details</h3>";
+      s += "<p>SMTP Server: " + String(Settings.smtp_server) + "</p>";
+      s += "<p>SMTP Port: " + String(Settings.smtp_port) + "</p>";
+      s += "<p>Username: " + String(Settings.smtp_user) + "</p>";
+      s += "<p>Password: " + String(Settings.smtp_password) + "</p>";
       
+      s += "<h3>Email Details</h3>";
+      s += "<p>From: " + String(Settings.from) + "</p>";
+      s += "<p>To: " + String(Settings.to) + "</p>";
+      s += "<p>Subject: " + String(Settings.subject) + "</p>";
+      s += "<p>Body: " + String(Settings.body) + "</p>";     
+#else
       s += "<h3>SMTP Details</h3>";
       s += "<p>SMTP Server: " + String(smtp_server) + "</p>";
       s += "<p>SMTP Port: " + String(smtp_port) + "</p>";
@@ -624,10 +858,12 @@ void startWebServer() {
       s += "<p>To: " + String(to) + "</p>";
       s += "<p>Subject: " + String(subject) + "</p>";
       s += "<p>Body: " + String(body) + "</p>";
+#endif
+     
       
       s += "<h3>Options</h3>";
       s += "<p><a href=\"/reset\">Clear Saved Settings</a></p>";
-      Serial.println(s);
+      //Serial.println(s);
       WEB_SERVER.send(200, "text/html", makePage("Station mode", s));
     });
     WEB_SERVER.on("/reset", []() {
@@ -636,7 +872,7 @@ void startWebServer() {
       }
       EEPROM.commit();
       String s = "<h1>Wi-Fi settings was reset.</h1><p>Please reset device.</p>";
-      Serial.println(s);
+      //Serial.println(s);
       WEB_SERVER.send(200, "text/html", makePage("Reset Wi-Fi Settings", s));
     });
   }
@@ -688,7 +924,7 @@ String makePage(String title, String contents) {
   s += contents;
   s += "</div>";
   s += "</body></html>";
-  Serial.println(s);
+  //Serial.println(s);
   return s;
 }
 
