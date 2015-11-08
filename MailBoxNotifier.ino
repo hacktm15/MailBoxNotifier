@@ -61,18 +61,18 @@ int SETTINGS_SIZE = AP_SETTINGS_SIZE + SMTP_SETTINGS_SIZE + EMAIL_SETTINGS_SIZE;
 //////////////////////
 // SETTINGS         //
 //////////////////////
-String ssid = "TP-LINK_6CF8F6";
-String password = "12345678asdf";
+String ssid = "";
+String password = "";
   
-String smtp_server = "mail.brudiu.ro";
-String smtp_port = "25";
-String smtp_user = "bogdan@brudiu.ro";
-String smtp_password = "cevreitu";
+String smtp_server = "";
+String smtp_port = "";
+String smtp_user = "";
+String smtp_password = "";
 
-String from = "bogdan@brudiu.ro";
-String to = "bogdanbrudiu@gmail.com";
-String subject = "MailBox Notifier";
-String body = "New Mail";
+String from = "";
+String to = "";
+String subject = "";
+String body = "";
 
 
 
